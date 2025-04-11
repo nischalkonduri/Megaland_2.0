@@ -37,7 +37,6 @@ public class HomePage extends JPanel {
         double heightScale = screenHeight / 1040.0;
 
         try {
-            // Update the path to use "Images/MegalandWallpaper.jpg"
             loading = ImageIO.read(new File("Images" + File.separator + "MegalandWallpaper.jpg"));
         } catch (Exception ah) {
             ah.printStackTrace();
@@ -78,6 +77,15 @@ public class HomePage extends JPanel {
             @Override
             public void actionPerformed(ActionEvent e) {
                 jFrame.setContentPane(new HostPage(jFrame, username));
+                jFrame.revalidate();
+                jFrame.repaint();
+            }
+        });
+
+        connectButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                jFrame.setContentPane(new ClientPage(jFrame, username));
                 jFrame.revalidate();
                 jFrame.repaint();
             }

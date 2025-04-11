@@ -13,6 +13,7 @@ import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 public class HostPage extends JPanel{
 
@@ -23,7 +24,7 @@ public class HostPage extends JPanel{
     private JLabel numPlayersLabel = new JLabel("Number of Players: ");
     private ButtonGroup playerGroup = new ButtonGroup();
     private JRadioButton[] playerButtons = new JRadioButton[4];
-    private JLabel ipLabel = new JLabel("Hosting IP Address: ");
+    private JLabel ipLabel = new JLabel("Game Code: ");
     private JLabel ipPlaceHolderLabel = new JLabel("Waiting for game settings...");
     private JButton homeButton = new JButton("Home");
     private JButton startHostingButton = new JButton("Start Hosting");
@@ -32,30 +33,24 @@ public class HostPage extends JPanel{
     private BufferedImage loading;
     private String ipAddress;
     public String hostName;
-    public final int[] selectedNumberOfPlayers = {2};
+    public final int[] selectedNumberOfPlayers = {1};
     private JLabel peopleInGameLabel = new JLabel("People in Game Server: ");
     private JTextArea peopleListArea = new JTextArea();
     private JScrollPane peopleScrollPane = new JScrollPane(peopleListArea);
     private JPanel peoplePanel = new JPanel();
+    public DatabaseManager databaseManager = new DatabaseManager();
 
-//    ArrayList<Player> playerInfo = new ArrayList<>(); //Ayan Code Implement
-//    private ServerSocket serverSocket;
-//    //private final List<ClientHandler> clientHandler = new ArrayList<ClientHandler>();
-//    public ArrayList<String> playerList_serverSide = new ArrayList<>();
-//    private ServerListener serverListener;
-//    private ServerMain serverMain;
-//    private CommandFromServer commandFromServer = new CommandFromServer();
-//    private CharacterSelectPanel characterSelectPanel;
-//    private CardSelectPanel cardSelectPanel;
-//    private JFrame jFrame;
-//    private GamePanel gamePanel;
-//    private ChatPanel chatPanel;
-//    private ArrayList<String> ListName = new ArrayList<>();
-//    public Player playerHost;
+    public String gameCode;
+    public ArrayList<String> peopleInGame = new ArrayList<>();
+
     public String username;
     public JFrame jFrame;
     public double widthScale;
     public double heightScale;
+
+    public Thread lobbyUpdater;
+    private volatile boolean isLobbyUpdaterRunning = false;
+
 
     public HostPage(JFrame frame, String username) {
         this.jFrame = frame;
@@ -72,7 +67,6 @@ public class HostPage extends JPanel{
         heightScale = screenHeight / 1040.0;
 
         setLayout(null);
-        //this.playerList_serverSide = new ArrayList<>();
 
         try {
             loading = ImageIO.read(new File("Images" + File.separator + "MegalandWallpaper.jpg"));
@@ -125,18 +119,11 @@ public class HostPage extends JPanel{
                 ipPlaceHolderLabel.setText("Waiting for game settings...");
                 setPlayerButtonsEnabled(true);
                 peoplePanel.setVisible(true);
-//                resetStartHostingButton();
-//                clearPeopleList();
-//                clearPeopleList();
             } else {
                 hostName = nameTextField.getText();
                 nameTextField.setEnabled(false);
                 confirmSettings.setText("Change Settings");
-//                ipLabel.setVisible(true);
-//                ipPlaceHolderLabel.setVisible(true);
-                ipPlaceHolderLabel.setText("Waiting for game settings...");
-
-                ipPlaceHolderLabel.setText(ipAddress);
+                ipPlaceHolderLabel.setText("Start Hosting Game...");
                 setPlayerButtonsEnabled(false);
                 peoplePanel.setVisible(true);
                 startButton.setVisible(true);
@@ -163,7 +150,7 @@ public class HostPage extends JPanel{
         for (int i = 0; i < numberPlayersOption.length; i++) {
             final int index = i;
             playerButtons[i] = new JRadioButton(numberPlayersOption[i]);
-            playerButtons[i].setBounds((int)((480+i*55) * widthScale), (int)(550 * heightScale - 60-10), (int)(50 * widthScale), (int)(75 * heightScale));
+            playerButtons[i].setBounds((int)((480+i*55) * widthScale), (int)(550 * heightScale - 60-10), (int)(55 * widthScale), (int)(80 * heightScale));
             playerButtons[i].setFont(new Font("Georgia", Font.BOLD, (int)(20 * Math.min(widthScale, heightScale))));
             playerButtons[i].setOpaque(false);
             playerButtons[i].setBackground(Color.black);
@@ -179,7 +166,7 @@ public class HostPage extends JPanel{
             add(playerButtons[i]);
         }
 
-        ipLabel.setBounds((int)(260 * widthScale), (int)(540 * heightScale-10), (int)(250 * widthScale), (int)(40 * heightScale));
+        ipLabel.setBounds((int)(260 * widthScale), (int)(540 * heightScale-15), (int)(250 * widthScale), (int)(40 * heightScale));
         ipLabel.setFont(new Font("Georgia", Font.PLAIN, (int)(20 * Math.min(widthScale, heightScale))));
         ipLabel.setVisible(true);
         ipLabel.setOpaque(true);
@@ -190,7 +177,7 @@ public class HostPage extends JPanel{
         ipLabel.setBorder(new LineBorder(Color.white, 1));
         add(ipLabel);
 
-        ipPlaceHolderLabel.setBounds((int)(508 * widthScale), (int)(540 * heightScale-10), (int)(400 * widthScale), (int)(40 * heightScale));
+        ipPlaceHolderLabel.setBounds((int)(508 * widthScale), (int)(540 * heightScale-15), (int)(400 * widthScale), (int)(40 * heightScale));
         ipPlaceHolderLabel.setFont(new Font("Georgia", Font.ITALIC, (int)(20 * Math.min(widthScale, heightScale))));
         ipPlaceHolderLabel.setVisible(true);
         ipPlaceHolderLabel.setOpaque(true);
@@ -201,7 +188,7 @@ public class HostPage extends JPanel{
         ipPlaceHolderLabel.setBorder(new LineBorder(Color.white, 1));
         add(ipPlaceHolderLabel);
 
-        peopleInGameLabel.setBounds((int)(260 * widthScale), (int)(600 * heightScale-10), (int)(300 * widthScale), (int)(40 * heightScale));
+        peopleInGameLabel.setBounds((int)(260 * widthScale), (int)(600 * heightScale-20), (int)(300 * widthScale), (int)(40 * heightScale));
         peopleInGameLabel.setFont(new Font("Georgia", Font.PLAIN, (int)(20 * Math.min(widthScale, heightScale))));
         peopleInGameLabel.setVisible(true);
         peopleInGameLabel.setOpaque(true);
@@ -214,35 +201,41 @@ public class HostPage extends JPanel{
 
         peopleListArea.setFont(new Font("Georgia", Font.PLAIN, (int)(20 * Math.min(widthScale, heightScale))));
         peopleListArea.setEditable(false);
-        peopleListArea.setBounds((int)(260 * widthScale), (int)(645 * heightScale-10), (int)(430 * widthScale), (int)(240 * heightScale - 20));
+        peopleListArea.setBounds((int)(260 * widthScale), (int)(645 * heightScale-15), (int)(430 * widthScale), (int)(240 * heightScale - 20));
         peopleListArea.setBackground(Color.BLACK);
         peopleListArea.setForeground(Color.WHITE);
         peopleListArea.setBorder(new LineBorder(Color.white, 1));
         add(peopleListArea);
 
-//        peopleScrollPane.setBounds(0, 0, 600, 200);
-//        add(peopleScrollPane);
-//
-//        peoplePanel.setBounds(250, 650, 400, 250);
-//        peoplePanel.setLayout(null);
-//        peoplePanel.add(peopleScrollPane);
-//        add(peoplePanel);
+        peopleScrollPane.setBounds((int)(260 * widthScale), (int)(645 * heightScale-15), (int)(430 * widthScale), (int)(240 * heightScale - 20));
+        add(peopleScrollPane);
 
-        startHostingButton.setBounds((int)(260 * widthScale), (int)(905 * heightScale-20-10), (int)(200 * widthScale), (int)(40 * heightScale));
+        peoplePanel.setBounds((int)(260 * widthScale), (int)(645 * heightScale-15), (int)(430 * widthScale), (int)(240 * heightScale - 20));
+        peoplePanel.setLayout(null);
+        peoplePanel.add(peopleScrollPane);
+        add(peoplePanel);
+
+        startHostingButton.setBounds((int)(260 * widthScale), (int)(905 * heightScale-20-20), (int)(200 * widthScale), (int)(40 * heightScale));
         startHostingButton.setFont(new Font("Georgia", Font.BOLD,(int)(20 * Math.min(widthScale, heightScale))));
         startHostingButton.setEnabled(false);
         startHostingButton.addActionListener(e -> {
-            //startHostingServer();
             startHostingButton.setEnabled(false);
             startHostingButton.setBackground(Color.BLACK);
             startHostingButton.setForeground(Color.WHITE);
             startHostingButton.setText("Hosting...");
             confirmSettings.setEnabled(false);
-            //updatePeopleList();
-//            playerHost = new Player(0, nameTextField.getText(), false, 0, 0,0,true,true, true, new ArrayList<BuildingCards>(), new ArrayList<TreasureCard>(), new ArrayList<LevelCard>(), null, new ArrayList<TreasureCard>(), new ArrayList<BuildingCards>());
-//            serverMain.playerArrayList_Host.add(playerHost);
-//            serverMain.broadcastMessagePlayers(serverMain.playerArrayList_Host);
             startHostingButton.setBorder(new LineBorder(Color.white, 1));
+            StringBuilder code = new StringBuilder();
+            Random r = new Random();
+            for (int i = 0; i < 6; i++) {
+                code.append((char) ('a' + r.nextInt(26)));
+            }
+            gameCode = code.toString();
+            ipPlaceHolderLabel.setText(gameCode);
+            databaseManager.addToHostTable(username, selectedNumberOfPlayers[0], gameCode);
+            homeButton.setText("Leave");
+            peopleInGame = databaseManager.getPlayersInGame(gameCode);
+            startLobbyUpdateThread();
         });
         add(startHostingButton);
         startHostingButton.setFocusPainted(false);
@@ -260,27 +253,16 @@ public class HostPage extends JPanel{
         });
 
 
-        startButton.setBounds((int)(490 * widthScale), (int)(905 * heightScale-20-10), (int)(200 * widthScale), (int)(40 * heightScale));
+        startButton.setBounds((int)(490 * widthScale), (int)(905 * heightScale-20-20), (int)(200 * widthScale), (int)(40 * heightScale));
         startButton.setFont(new Font("Georgia",Font.BOLD,(int)(20 * Math.min(widthScale, heightScale))));
-        startButton.setEnabled(false);//mayank fix this
+        startButton.setEnabled(false);
         startButton.addActionListener(e -> {
-////            serverMain.broadcastMessage(1, nameTextField.getText());
-////            //commandFromServer.notify_START_GAME(serverMain.getOut(), nameTextField.getText());
-////            System.out.println("Game Has Started!!!");
-////
-////            cardSelectPanel.setPreferredSize(new Dimension(1920,1040));
-////
-////            JScrollPane scrollPane1 = new JScrollPane(cardSelectPanel);
-//            scrollPane1.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-//            scrollPane1.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-//            add(scrollPane1);
-//            frame.setContentPane(scrollPane1);
-//
-//            frame.pack();
-//            frame.revalidate();
-//            frame.repaint();
-//            frame.setVisible(true);
-
+            databaseManager.setGameStartedStatus(gameCode);
+//            jFrame.setContentPane(new ____(jFrame, username, gameCode)); //Class Name, frame, username, and gamecode
+//            jFrame.revalidate();
+//            jFrame.repaint();
+            stopLobbyUpdateThread();
+            startButton.setEnabled(false);
         });
         startButton.setFocusPainted(false);
         startButton.setBackground(Color.black);
@@ -301,28 +283,11 @@ public class HostPage extends JPanel{
         homeButton.setFont(new Font("Georgia", Font.BOLD, (int)(20 * Math.min(widthScale, heightScale))));
         homeButton.addActionListener(e -> {
 
+            databaseManager.removeHost(username);
+            stopLobbyUpdateThread();
             jFrame.setContentPane(new HomePage(jFrame, username));
             jFrame.revalidate();
             jFrame.repaint();
-
-//            if(serverMain != null) {
-//                serverMain.broadcastMessage(3, nameTextField.getText());
-//                serverMain.stopServer();
-//            }
-//
-//            LoadingPanel loadingPanel = new LoadingPanel(jFrame);
-//            loadingPanel.setPreferredSize(new Dimension(1920,1040));
-//
-//            JScrollPane scrollPane1 = new JScrollPane(loadingPanel);
-//            scrollPane1.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-//            scrollPane1.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-//            add(scrollPane1);
-//            frame.setContentPane(scrollPane1);
-//
-//            frame.pack();
-//            frame.revalidate();
-//            frame.repaint();
-//            frame.setVisible(true);
         });
         homeButton.setFocusPainted(false);
         homeButton.setBackground(Color.black);
@@ -339,27 +304,45 @@ public class HostPage extends JPanel{
         });
         add(homeButton);
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-//            if(serverMain != null) {
-//                serverMain.broadcastMessage(3, nameTextField.getText());
-//                serverMain.stopServer();
-//            }
-        }));
-
         jFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-        jFrame.addWindowListener(new WindowAdapter() {
-//            public void windowClosing(WindowEvent e) {
-//                if(serverMain != null) {
-//                    serverMain.broadcastMessage(3, nameTextField.getText());
-//                    serverMain.stopServer();
-//                }
-//                frame.setContentPane(new LoadingPanel(frame));
-//                frame.revalidate();
-//            }
-        });
-
         setVisible(true);
     }
+
+    public void stopLobbyUpdateThread() {
+        isLobbyUpdaterRunning = false;
+        if (lobbyUpdater != null) {
+            lobbyUpdater.interrupt();
+        }
+    }
+
+
+    private void startLobbyUpdateThread() {
+        lobbyUpdater = new Thread(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    break;
+                }
+                SwingUtilities.invokeLater(() -> updateLobbyView());
+            }
+        });
+        lobbyUpdater.setDaemon(true);
+        lobbyUpdater.start();
+        isLobbyUpdaterRunning = true;
+    }
+    private void updateLobbyView() {
+        peopleInGame = databaseManager.getPlayersInGame(gameCode);
+        peopleListArea.setText("");
+        StringBuilder sb = new StringBuilder("");
+        for(String playerName : peopleInGame){
+            sb.append(playerName).append("\n");
+        }
+        peopleListArea.setText(sb.toString());
+        updateStartButtonState();
+    }
+
     public void paintComponent(Graphics g) {
         super.paintComponent(g);
         g.drawImage(loading, 0, 0, getWidth(), getHeight(), null);
@@ -391,63 +374,10 @@ public class HostPage extends JPanel{
     }
 
     public void updateStartButtonState(){
-//        int numberOfPeople = getNumberOfPeopleInGame();
-//        startButton.setEnabled(numberOfPeople == selectedNumberOfPlayers[0]);
-//        System.out.print(selectedNumberOfPlayers[0]  + "Selected Number of People");
-//        System.out.print(numberOfPeople + "Number of People");
-    }
+        int numberOfPeople = databaseManager.getPlayersInGame(gameCode).size();
+        startButton.setEnabled(numberOfPeople == selectedNumberOfPlayers[0]);
+        System.out.println(selectedNumberOfPlayers[0]  + "Selected Number of People");
+        System.out.println(numberOfPeople  + "Number of People");
 
-//    public int getNumberOfPeopleInGame(){
-//        return ListName.size();
-//    }
-//
-//    public synchronized void updatePeopleList(ArrayList<String> playerNames) {
-////        ListName = playerNames;
-////        peopleListArea.setText("");
-////        StringBuilder sb = new StringBuilder("");
-////        for(String playerName : playerNames){
-////            sb.append(playerName).append("\n");
-////        }
-////        peopleListArea.setText(sb.toString());
-////        updateStartButtonState();
-////    }
-//
-//    public void clearPeopleList(){
-//        peopleListArea.setText("");
-//    }
-//
-//    public void startHostingServer() {
-//        try {
-////            cardSelectPanel = new CardSelectPanel(jFrame, null, this);
-////            this.serverMain = new ServerMain(12345, nameTextField.getText(), this, cardSelectPanel.getCharacterSelectPanel(), null, null);
-////            cardSelectPanel = new CardSelectPanel(jFrame, serverMain, this);
-////            characterSelectPanel = cardSelectPanel.getCharacterSelectPanel();
-////            serverMain.setCharacterSelectPanel(characterSelectPanel);
-////            new Thread(() -> serverMain.startServer()).start();
-////            System.out.println("Hosting Started");
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//            JOptionPane.showMessageDialog(this, "Error Starting the Server");
-//        }
-//    }
-//    private synchronized void printPlayerList(){
-//        System.out.println("People Currently in the Game:");
-//        System.out.println(hostName);
-//        for(String playerName : playerList_serverSide){
-//            System.out.println(playerName);
-//        }
-//    }
-//    private void resetStartHostingButton(){
-//        startHostingButton.setEnabled(false);
-//        startHostingButton.setForeground(Color.WHITE);
-//        startHostingButton.setBackground(Color.BLACK);
-//        startHostingButton.setText("Start Hosting!");
-//    }
-//    public ArrayList<String> getPlayerList(){
-//        return playerList_serverSide;
-//    }
-//    public void setCharacterSelectPanel(CharacterSelectPanel panel) {
-//        this.characterSelectPanel = panel;
-//    }
-//    public void setChatPanel(ChatPanel chatPanel) { this.chatPanel = chatPanel; }
+    }
 }
